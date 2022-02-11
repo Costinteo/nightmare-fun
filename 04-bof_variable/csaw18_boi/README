@@ -1,0 +1,18 @@
+=== Personal solution description ===
+
+Kinda sucks there's nothing else to show off in this directory... Maybe I SHOULD have kept the binaries.
+
+1. Decompile the main function in Ghidra
+2. Clean-up variables.
+3. The very important part of this challenge is to notice that the variable we're reading input into has 20 bytes on the stack, while the read() function gets 24 bytes. This smells like a buffer overflow.
+4. The var it probably wants us to change is the one in the condition, that is previously assigned 0xdeadbeef.
+5. Craft a payload with Bash or Python and pass it at stdin to the executable.
+
+At command-line:
+$ echo -e "aaaaaaaaaaaaaaaaaaaa\xee\xba\xf3\xca" | ./boi
+
+This will stop the date from printing. Another thing to mention is that, although the variable has to be 0xcaf3baee, we pass 0xeebaf3ca, because of endianness on intel CPUs.
+
+This won't get us the shell, though. We have to keep it open by passing another command to that particular shell. So:
+
+$ (echo -e "aaaaaaaaaaaaaaaaaaaa\xee\xba\xf3\xca"; cat;) | ./boi
