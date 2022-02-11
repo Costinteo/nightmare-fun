@@ -1,0 +1,12 @@
+=== Personal solution description ===
+
+1. Decompile beleaf with Ghidra
+2. Find main function
+3. Clean up variable names
+4. Find the two global pointers that are iterated through like an int array and long array respectively
+5. Redefine them their bytes as arrays of type int and long respectively
+6. ???
+7. Profit
+8. Be too lazy to write them out manually so make a beleaf_solution.c "generator" and just copy paste the hex arrays into a C array.
+
+
