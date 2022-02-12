@@ -1,0 +1,8 @@
+=== Personal solution description ===
+
+Same as the other ones. Notice the buffer overflow in the 16 bytes buffer. The fgets reads 32 bytes. There's 4 bytes that correspond to the file pointer, so also overwrite that. So 20 padded bytes and 4 bytes left to redirect the pointer to the message printed to somewhere else. Add the address of where the flag is read and run. The payload:
+
+$ echo -e "%%%%%%%%%%%%%%%%%%%%\x80\xa0\x04\x08" | ./just_do_it
+
+Global flag variable is located at 0x0804a080.
+Flag is: TWCTF{pwnable_warmup_I_did_it!}
