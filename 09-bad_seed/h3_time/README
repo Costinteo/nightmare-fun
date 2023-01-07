@@ -1,0 +1,63 @@
+=== Personal solution description ===
+
+Obviously a badly seeded rand(). We can just seed the current time in our own program and then pipe the output to the guesser.
+-------------------------------------------------------------------
+	undefined8 main(void)
+
+	{
+	  time_t tVar1;
+	  long in_FS_OFFSET;
+	  uint local_18;
+	  uint local_14;
+	  long local_10;
+	  
+	  local_10 = *(long *)(in_FS_OFFSET + 0x28);
+
+
+	  tVar1 = time((time_t *)0x0);   // <----------- here's the interesting part
+	  srand((uint)tVar1);
+	  local_14 = rand();
+
+
+	  puts("Welcome to the number guessing game!");
+	  puts("I\'m thinking of a number. Can you guess it?");
+	  puts("Guess right and you get a flag!");
+	  printf("Enter your number: ");
+	  fflush(stdout);
+	  __isoc99_scanf(&DAT_00400bbc,&local_18);
+	  printf("Your guess was %u.\n",(ulong)local_18);
+	  printf("Looking for %u.\n",(ulong)local_14);
+	  fflush(stdout);
+	  if (local_14 == local_18) {
+		puts("You won. Guess was right! Here\'s your flag:");
+		giveFlag();
+	  }
+	  else {
+		puts("Sorry. Try again, wrong guess!");
+	  }
+	  fflush(stdout);
+	  if (local_10 != *(long *)(in_FS_OFFSET + 0x28)) {
+						/* WARNING: Subroutine does not return */
+		__stack_chk_fail();
+	  }
+	  return 0;
+	}
+-------------------------------------------------------------------
+
+Here's the exploit:
+-------------------------------------------------------------------
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+	time_t t = time(0);
+	srand((unsigned int)t);
+	char cmd[256];
+	snprintf(cmd, 256, "echo -n '%u' | ./time", rand());
+	system(cmd);
+	return 0;
+}
+-------------------------------------------------------------------
+
+Pretty simple.
