@@ -1,0 +1,4 @@
+=== Personal solution description ===
+
+Binary checks if the 10 character input is at the same time greater and lower than 37.35929. I don't like this challenge... The solution is simply using "nan" which is a special value for floats that will pass such checks.
+	$ echo "nan" | ./alternate_solution
